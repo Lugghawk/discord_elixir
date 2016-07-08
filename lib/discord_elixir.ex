@@ -35,9 +35,16 @@ defmodule DiscordElixir do
             "$referring_domain" => ""
           }
         }
-        IO.inspect Poison.encode!(identification)
-        discord.client.send({:text, Poison.encode!(identification)}, discord.socket)
+
+        identify_opcode = %{
+          op: 2,
+          d: identification
+        }
+        IO.inspect Poison.encode!(identify_opcode)
+        discord.client.send({:text, Poison.encode!(identify_opcode)}, discord.socket)
       end
+
+
 
       def init(%{gateway: gateway, client: client, token: token}, socket) do
         IO.inspect "Init"
@@ -73,10 +80,10 @@ defmodule DiscordElixir do
         IO.inspect("ended websocket")
       end
 
-      def websocket_handle(data, conn, state) do
-        IO.inspect("Data #{data}")
-        IO.inspect("conn #{conn}")
-        IO.inspect("state #{state}")
+      def websocket_handle({:text, message}, conn, state) do
+        IO.inspect "handling websocket message!!!"
+        IO.inspect message
+        {:ok, state}
       end
 
       def handle_exception(e) do
