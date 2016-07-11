@@ -80,8 +80,15 @@ defmodule DiscordElixir do
         {:ok, state}
       end
 
-      def handle_message(_message, _conn, _state) do
-        IO.puts "handling other message"
+      def handle_message(message, _conn, state) do
+        IO.inspect message
+        case message do
+          %{"t" => "MESSAGE_CREATE", "d" => %{"content" => content}} ->
+            handle_chat_message(message, state)
+          _ -> 
+            {:ok, state}
+        end
+
       end
 
       def websocket_handle({:text, message}, conn, state) do
@@ -98,6 +105,9 @@ defmodule DiscordElixir do
         Poison.Parser.parse!(string_message)
       end
 
+      def handle_chat_message(_message, _state), do: :ok 
+
+      defoverridable [ handle_chat_message: 2 ]
     end
 
   end
