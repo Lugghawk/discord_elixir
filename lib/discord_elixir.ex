@@ -75,26 +75,39 @@ defmodule DiscordElixir do
       end
 
       def handle_message(%{"t" => "READY", "d" => %{"heartbeat_interval" => heartbeat_interval}}, conn, state) do
-        IO.puts "handling READY"
         DiscordElixir.Heartbeat.start_heartbeat(state, heartbeat_interval)
         {:ok, state}
       end
 
+      def handle_message(message = %{"t" => "GUILD_CREATE"}, conn, state) do
+        state = store_channels(message, state)
+        {:ok, state}
+      end
+
+      def store_channels(%{"d" => %{"channels" => channels}}, state) do
+        channels =
+          channels
+          |> Enum.filter(fn chan -> chan["type"] == "text" end)
+          |> Enum.map(fn chan -> %{id: chan["id"], name: chan["name"]} end)
+        Map.put(state, :channels, channels)
+      end
+
       def handle_message(message, _conn, state) do
-        IO.inspect message
         case message do
-          %{"t" => "MESSAGE_CREATE", "d" => %{"content" => content}} ->
-            handle_chat_message(message, state)
-          _ -> 
+          %{"t" => "MESSAGE_CREATE", "d" => %{"content" => _content}} ->
+            message
+              |> add_channel_name(state)
+              |> handle_chat_message(state)
+            {:ok, state}
+          _ ->
             {:ok, state}
         end
 
       end
 
       def websocket_handle({:text, message}, conn, state) do
-        IO.puts "got message"
-        message |> convert_message |> handle_message(conn,state)
-        {:ok, state}
+        {:ok, new_state} = message |> convert_message |> handle_message(conn,state)
+        {:ok, new_state}
       end
 
       def handle_exception(e) do
@@ -102,10 +115,18 @@ defmodule DiscordElixir do
       end
 
       def convert_message(string_message) do
-        Poison.Parser.parse!(string_message)
+        message_map = Poison.Parser.parse!(string_message)
       end
 
-      def handle_chat_message(_message, _state), do: :ok 
+      def add_channel_name(message, state) do
+        IO.inspect(message)
+        IO.inspect(state)
+        Map.put(message, "channel_name",
+         Enum.find(state.channels, fn channel -> Map.get(channel, :id) == message["d"]["channel_id"] end) |> Map.get(:name)
+        )
+      end
+
+      def handle_chat_message(_message, _state), do: :ok
 
       defoverridable [ handle_chat_message: 2 ]
     end
