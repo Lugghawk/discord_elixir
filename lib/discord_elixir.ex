@@ -17,7 +17,7 @@ defmodule DiscordElixir do
             }
             url = String.to_char_list(gateway_url)
             client.start_link(url, __MODULE__, state)
-            state.client
+            {:ok, state}
         end
       end
 
