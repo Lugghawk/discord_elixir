@@ -8,21 +8,22 @@ defmodule DiscordElixir do
       import DiscordElixir.Sending
 
 
-      def start_link(token, client \\ :websocket_client) do
+      def start_link(token, wss_client \\ :websocket_client, rest_client \\ HTTPotion) do
         case DiscordElixir.Gateway.start(token) do
           {:ok, gateway_url} ->
             state = %{
               token: token,
-              client: client,
+              wss_client: wss_client,
               gateway: gateway_url,
               start_pid: self(),
               rest_api_url: "https://discordapp.com/api",
+              rest_client: rest_client
             }
             bot_name_task = Task.async(fn -> DiscordElixir.Sending.bot_name(state) end)
             url = String.to_char_list(gateway_url)
             bot_name = Task.await(bot_name_task)
             state = Map.put(state, :bot_name, bot_name)
-            client.start_link(url, __MODULE__, state)
+            wss_client.start_link(url, __MODULE__, state)
             receive do
               {:ok, discord} ->
                 discord = Map.delete(discord, :start_pid)
@@ -50,7 +51,7 @@ defmodule DiscordElixir do
           op: 2,
           d: identification
         }
-        discord.client.send({:text, Poison.encode!(identify_opcode)}, discord.socket)
+        discord.wss_client.send({:text, Poison.encode!(identify_opcode)}, discord.socket)
       end
 
       def init(discord, socket) do

@@ -6,7 +6,7 @@ defmodule DiscordElixir.Heartbeat do
     end)
   end
 
-  def do_heartbeat(discord = %{client: client, socket: socket}, sleep_time) do
+  def do_heartbeat(discord = %{wss_client: client, socket: socket}, sleep_time) do
 
     :timer.sleep sleep_time
     client.send({:text, heartbeat}, socket);
