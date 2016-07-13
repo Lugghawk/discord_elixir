@@ -5,6 +5,7 @@ defmodule DiscordElixir do
       @behaviour :websocket_client_handler
       require Logger
       import DiscordElixir
+      import DiscordElixir.Sending
 
 
       def start_link(token, client \\ :websocket_client) do
@@ -13,11 +14,22 @@ defmodule DiscordElixir do
             state = %{
               token: token,
               client: client,
-              gateway: gateway_url
+              gateway: gateway_url,
+              start_pid: self(),
+              rest_api_url: "https://discordapp.com/api",
             }
+            bot_name_task = Task.async(fn -> DiscordElixir.Sending.bot_name(state) end)
             url = String.to_char_list(gateway_url)
+            bot_name = Task.await(bot_name_task)
+            state = Map.put(state, :bot_name, bot_name)
             client.start_link(url, __MODULE__, state)
-            {:ok, state}
+            receive do
+              {:ok, discord} ->
+                discord = Map.delete(discord, :start_pid)
+                {:ok, discord}
+              message ->
+                {:error}
+            end
         end
       end
 
@@ -41,13 +53,8 @@ defmodule DiscordElixir do
         discord.client.send({:text, Poison.encode!(identify_opcode)}, discord.socket)
       end
 
-      def init(%{gateway: gateway, client: client, token: token}, socket) do
-        discord = %{
-          socket: socket,
-          client: client,
-          token: token,
-          gateway_url: gateway
-        }
+      def init(discord, socket) do
+        discord = Map.put(discord, :socket, socket)
         on_connect(discord)
         {:ok, discord}
       end
@@ -81,6 +88,7 @@ defmodule DiscordElixir do
 
       def handle_message(message = %{"t" => "GUILD_CREATE"}, conn, state) do
         state = store_channels(message, state)
+        send state.start_pid, {:ok, state}
         {:ok, state}
       end
 
@@ -97,12 +105,19 @@ defmodule DiscordElixir do
           %{"t" => "MESSAGE_CREATE", "d" => %{"content" => _content}} ->
             message
               |> add_channel_name(state)
+              |> format_message
               |> handle_chat_message(state)
             {:ok, state}
           _ ->
             {:ok, state}
         end
-
+      end
+      def format_message(message) do
+        %{
+          author: message["d"]["author"]["username"],
+          content: message["d"]["content"],
+          channel_name: message["channel_name"],
+         }
       end
 
       def websocket_handle({:text, message}, conn, state) do
@@ -119,8 +134,6 @@ defmodule DiscordElixir do
       end
 
       def add_channel_name(message, state) do
-        IO.inspect(message)
-        IO.inspect(state)
         Map.put(message, "channel_name",
          Enum.find(state.channels, fn channel -> Map.get(channel, :id) == message["d"]["channel_id"] end) |> Map.get(:name)
         )
