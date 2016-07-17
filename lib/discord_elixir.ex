@@ -1,10 +1,10 @@
-defmodule DiscordElixir do
+defmodule Discord do
 
   defmacro __using__(_) do
     quote do
       @behaviour :websocket_client_handler
       require Logger
-      import DiscordElixir
+      import Discord
       import DiscordElixir.Sending
 
 
@@ -28,66 +28,60 @@ defmodule DiscordElixir do
               {:ok, discord} ->
                 discord = Map.delete(discord, :start_pid)
                 {:ok, discord}
-              message ->
+              _ ->
                 {:error}
             end
         end
       end
 
-      def identify(discord) do
+      def init(discord, socket) do
+        discord = Map.put(discord, :socket, socket)
+        identify(identification(discord), discord)
+        {:ok, discord}
+      end
+
+      def identify(id, discord) do
+        discord.wss_client.send({:text, Poison.encode!(id)}, discord.socket)
+      end
+
+      def identification(discord) do
         identification = %{
           token: discord.token,
           compress: "true",
           properties: %{
             "$os" => "elixir",
-            "$browser" => "pricecheck",
-            "$device" => "pricecheck",
+            "$browser" => "elixir_bot",
+            "$device" => "elixir",
             "$referrer" => "",
             "$referring_domain" => ""
           }
         }
 
-        identify_opcode = %{
+        %{
           op: 2,
           d: identification
         }
-        discord.wss_client.send({:text, Poison.encode!(identify_opcode)}, discord.socket)
       end
 
-      def init(discord, socket) do
-        discord = Map.put(discord, :socket, socket)
-        on_connect(discord)
-        {:ok, discord}
-      end
-
-      def on_connect(discord) do
-        identify(discord)
-      end
-
-      def websocket_info(:start, _connection, state) do
-        IO.inspect "info1"
-        {:ok, state}
-      end
-
-      def websocket_info(message, _connection, gateway) do
-        IO.inspect "info2"
+      def websocket_info(message, _connection, state) do
         try do
-          IO.inspect message
+          handle_info(message, state)
         rescue
           e -> handle_exception(e)
         end
       end
 
-      def websocket_terminate(_, _, _) do
-        IO.inspect("ended websocket")
+      def websocket_terminate(_message, _conn, state) do
+        handle_disconnect(state)
       end
 
-      def handle_message(%{"t" => "READY", "d" => %{"heartbeat_interval" => heartbeat_interval}}, conn, state) do
+      def handle_message(%{"t" => "READY", "d" => %{"heartbeat_interval" => heartbeat_interval}}, _conn, state) do
         DiscordElixir.Heartbeat.start_heartbeat(state, heartbeat_interval)
+        handle_connect(state)
         {:ok, state}
       end
 
-      def handle_message(message = %{"t" => "GUILD_CREATE"}, conn, state) do
+      def handle_message(message = %{"t" => "GUILD_CREATE"}, _conn, state) do
         state = store_channels(message, state)
         send state.start_pid, {:ok, state}
         {:ok, state}
@@ -142,7 +136,13 @@ defmodule DiscordElixir do
 
       def handle_chat_message(_message, _state), do: :ok
 
-      defoverridable [ handle_chat_message: 2 ]
+      def handle_disconnect(_state), do: :ok
+
+      def handle_info(_message, _state), do: :ok
+
+      def handle_connect(state), do: :ok
+
+      defoverridable [ handle_chat_message: 2, handle_disconnect: 1, handle_info: 2, handle_connect: 1 ]
     end
 
   end

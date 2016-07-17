@@ -3,7 +3,7 @@ defmodule DiscordElixir.Sending do
   def send_message(content, dest_channel, discord) do
    message = %{content: content} |> Poison.encode!
    channel_id = Enum.find(discord.channels, fn chan -> chan.name == dest_channel end) |> Map.get(:id)
-   discord.rest_client.post "#{discord.rest_api_url}/channels/#{channel_id}/messages", [body: message, headers: headers(discord)] 
+   discord.rest_client.post "#{discord.rest_api_url}/channels/#{channel_id}/messages", [body: message, headers: headers(discord)]
   end
 
   def headers(discord) do
